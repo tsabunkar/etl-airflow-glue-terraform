@@ -1,0 +1,6 @@
+# requirements.txt — MWAA / Airflow dependencies
+# Place this file at s3://<airflow-bucket>/requirements.txt
+
+apache-airflow-providers-amazon==8.19.0
+apache-airflow-providers-common-sql==1.10.0
+boto3>=1.28.0
