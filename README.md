@@ -59,6 +59,7 @@ etl-poc/
 ## Pipeline Stages
 
 ### Stage 1 — Glue Job 1: Clean & Validate
+
 - Reads raw CSVs with enforced schema (no full-scan type inference)
 - Trims whitespace, replaces empty strings with null
 - Validates required fields; quarantines bad rows
@@ -68,6 +69,7 @@ etl-poc/
 - Writes partitioned Parquet `year=YYYY/month=MM/`
 
 ### Stage 2 — Glue Job 2: Aggregate & Transform
+
 Produces **8 aggregated datasets**:
 | Dataset | Description |
 |---|---|
@@ -81,6 +83,7 @@ Produces **8 aggregated datasets**:
 | `overall_kpi` | Single-row global KPI summary |
 
 ### Stage 3 — Glue Job 3: Consolidate → JSON
+
 - Reads all 8 Parquet datasets from Stage 2
 - Builds a nested JSON document with all sections
 - Writes a single `etl_report_<run_id>.json` + `manifest_<run_id>.json` to S3
@@ -90,46 +93,52 @@ Produces **8 aggregated datasets**:
 
 ## Prerequisites
 
-| Tool | Version |
-|---|---|
-| Terraform | >= 1.5.0 |
-| AWS CLI | >= 2.0 |
-| Python | >= 3.9 (for data generator) |
-| AWS Provider | ~> 5.0 |
+| Tool         | Version                     |
+| ------------ | --------------------------- |
+| Terraform    | >= 1.5.0                    |
+| AWS CLI      | >= 2.0                      |
+| Python       | >= 3.9 (for data generator) |
+| AWS Provider | ~> 5.0                      |
 
 ---
 
 ## Deployment
 
 ### Step 1 — Configure AWS credentials
+
 ```bash
 aws configure
 # or use AWS_PROFILE / IAM role
 ```
 
 ### Step 2 — Initialize Terraform
+
 ```bash
 cd terraform/
 terraform init
 ```
 
 ### Step 3 — Review the plan
+
 ```bash
 terraform plan -var-file=terraform.tfvars
 ```
 
 ### Step 4 — Deploy infrastructure (~15-20 min for MWAA)
+
 ```bash
 terraform apply -var-file=terraform.tfvars
 ```
 
 ### Step 5 — Upload Airflow requirements.txt
+
 ```bash
 AIRFLOW_BUCKET=$(terraform output -raw airflow_bucket_name)
 aws s3 cp ../airflow_dags/requirements.txt s3://$AIRFLOW_BUCKET/requirements.txt
 ```
 
 ### Step 6 — Set Airflow Variables (in MWAA UI or CLI)
+
 ```bash
 MWAA_ENV=$(terraform output -raw mwaa_environment_name)
 
@@ -158,6 +167,7 @@ done
 ```
 
 ### Step 7 — Generate & upload test data
+
 ```bash
 cd ../data_generator/
 pip install -r requirements.txt
@@ -171,6 +181,7 @@ python generate_sample_data.py \
 ```
 
 ### Step 8 — Trigger the DAG
+
 ```bash
 # Via Airflow UI at the MWAA webserver URL, or:
 AIRFLOW_URL=$(cd terraform && terraform output -raw mwaa_webserver_url)
@@ -212,13 +223,13 @@ echo "Open Airflow UI: https://$AIRFLOW_URL"
 
 ## Cost Estimate (dev environment, daily runs)
 
-| Service | Config | Estimated Cost/Month |
-|---|---|---|
-| MWAA | mw1.small | ~$80 |
-| Glue Jobs | 10 x G.1X workers, ~30 min/day | ~$15 |
-| S3 Storage | ~500 GB across all buckets | ~$12 |
-| NAT Gateway | Low traffic | ~$35 |
-| **Total** | | **~$142/month** |
+| Service     | Config                         | Estimated Cost/Month |
+| ----------- | ------------------------------ | -------------------- |
+| MWAA        | mw1.small                      | ~$80                 |
+| Glue Jobs   | 10 x G.1X workers, ~30 min/day | ~$15                 |
+| S3 Storage  | ~500 GB across all buckets     | ~$12                 |
+| NAT Gateway | Low traffic                    | ~$35                 |
+| **Total**   |                                | **~$142/month**      |
 
 ---
 
@@ -233,10 +244,21 @@ terraform destroy -var-file=terraform.tfvars
 
 ## Customization
 
-| What to change | Where |
-|---|---|
-| Input CSV schema | `glue_job1_clean.py` → `RAW_SCHEMA` |
-| Add new aggregation | `glue_job2_aggregate.py` → add new `agg_*` block |
+| What to change        | Where                                            |
+| --------------------- | ------------------------------------------------ |
+| Input CSV schema      | `glue_job1_clean.py` → `RAW_SCHEMA`              |
+| Add new aggregation   | `glue_job2_aggregate.py` → add new `agg_*` block |
 | Change JSON structure | `glue_job3_consolidate.py` → `consolidated` dict |
-| DAG schedule | `etl_pipeline_dag.py` → `schedule_interval` |
-| Scale Glue workers | `terraform.tfvars` → `glue_workers` |
+| DAG schedule          | `etl_pipeline_dag.py` → `schedule_interval`      |
+| Scale Glue workers    | `terraform.tfvars` → `glue_workers`              |
+
+---
+
+## AWS Components created
+
+- 5 S3 buckets — raw, cleaned, processed, output, glue-scripts
+- 3 AWS Glue Jobs (Glue 4.0, G.1X workers)
+- 1 Glue Crawler with daily schedule
+- MWAA (Airflow 2.8.1) with VPC, NAT Gateway, private subnets
+- IAM roles for Glue and MWAA with least-privilege policies
+- CloudWatch Log Groups, S3 lifecycle rules
